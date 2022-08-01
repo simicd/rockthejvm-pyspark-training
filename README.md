@@ -1,6 +1,6 @@
-# The repository for the Spark Essentials training
+# The repository for the Spark training setup
 
-This is the repository containing the starting project for the Spark Essentials training in Python.
+This is the repository containing the starting project for the live Spark training in Python.
 
 Recommended installation:
 
