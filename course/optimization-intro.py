@@ -1,4 +1,4 @@
-from pyspark.sql import SparkSession, Window
+from pyspark.sql import SparkSession, Window, DataFrame
 from pyspark.sql.types import *
 from pyspark.sql.functions import *
 
@@ -19,6 +19,25 @@ def compare_spark_apis():
     print(rdd.count()) # ... RDD - 2s
     print(df.rdd.count()) # DF -> RDD transformation - 18s
     print(spark.createDataFrame(rdd, IntegerType()).count()) # RDD -> DF transformation ~17s
+
+def cutLineage(df):
+    # use the underlying Java RDD without round trip to Python
+    java_rdd = df._jdf.toJavaRDD()
+    # keep schema (JVM version)
+    java_schema = df._jdf.schema()
+    # cache it, otherwise it gets reused
+    java_rdd.cache()
+    # access the API entry point for the `createDataFrame`
+    sql_context = df.sql_ctx
+    try:
+        java_sql_context = sql_context._jsqlContext
+    except:
+        java_sql_context = sql_context._ssql_ctx
+    # create new Java DataFrame out of the Java RDD
+    new_java_df = java_sql_context.createDataFrame(java_rdd, java_schema)
+    # create a PySpark DataFrame based on the existing (new) Java DF
+    new_df = DataFrame(new_java_df, sql_context)
+    return new_df
 
 
 def demo_query_plans():
@@ -46,12 +65,12 @@ def demo_query_plans():
     # creating a DF out of an RDD forgets its lineage
     # spark.createDataFrame(more_numbers_x5.rdd, more_numbers_x5.schema).explain()
 
-    df1 = spark.range(1, 100000000)
-    df2 = spark.range(1, 10000000, 2)
+    df1 = spark.range(1, 1000000)
+    df2 = spark.range(1, 100000, 2)
     df3 = df1.repartition(7)
     df4 = df2.repartition(13)
     df5 = df3.selectExpr("id * 3 as id")
-    joined = df4.join(df5, "id").union(df2)
+    joined = cutLineage(df4.join(df5, "id").union(df2))
     sum_df = joined.selectExpr("sum(id)")
     sum_df.explain()
     """
@@ -109,5 +128,6 @@ def demo_pushdown_jdbc():
     new_employees = employees_salaries.filter("hire_date > '1999-01-01'")
     new_employees.explain(True)
 
+
 if __name__ == '__main__':
-    demo_pushdown_jdbc()
+    demo_query_plans()
